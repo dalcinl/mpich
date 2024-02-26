@@ -23,16 +23,16 @@ def get_f08_c_name(func, is_large):
 
 def get_f08ts_name(func, is_large):
     if is_large:
-        name = func['name'] + "_c_f08ts"
+        name = func['name'] + "_c"
     else:
-        name = func['name'] + "_f08ts"
+        name = func['name'] + ""
     return name
 
 def get_f08_name(func, is_large):
     if is_large:
-        name = func['name'] + "_c_f08"
+        name = func['name'] + "_c"
     else:
-        name = func['name'] + "_f08"
+        name = func['name'] + ""
     return name
 
 def dump_f08_wrappers_c(func, is_large):
@@ -852,7 +852,7 @@ def dump_interface_function(func, name, c_name, is_large):
     G.out.append("END FUNCTION %s" % name)
 
 # dump the interface block in `mpi_f08.f90`
-def dump_mpi_f08(func, is_large):
+def dump_mpi_f08(func, is_large, abstract=False):
     f08_mapping = get_kind_map('F08', is_large)
 
     uses = {}
@@ -868,9 +868,10 @@ def dump_mpi_f08(func, is_large):
         check_decl_uses(decl, uses)
     if 'return' not in func:
         f_param_list.append("ierror")
-        decl_list.append("INTEGER, OPTIONAL, INTENT(out) :: ierror")
+        decl_list.append("integer, optional, intent(out) :: ierror")
     else:
-        decl_list.append("%s :: res" % f08_mapping[func['return']])
+        #decl_list.append("%s :: res" % f08_mapping[func['return']])
+        pass
 
     # ----
     if need_cdesc(func):
@@ -878,18 +879,20 @@ def dump_mpi_f08(func, is_large):
     else:
         name = get_f08_name(func, is_large)
     if 'return' not in func:
-        dump_fortran_line("SUBROUTINE %s(%s)" % (name, ', '.join(f_param_list)))
+        dump_fortran_line("subroutine %s(%s)" % (name, ', '.join(f_param_list)))
     else:
-        dump_fortran_line("FUNCTION %s(%s) result(res)" % (name, ', '.join(f_param_list)))
+        #dump_fortran_line("function %s(%s) result(res)" % (name, ', '.join(f_param_list)))
+        rtype = f08_mapping[func['return']]
+        dump_fortran_line(f"{rtype} function %s(%s)" % (name, ', '.join(f_param_list)))
     G.out.append("INDENT")
-    dump_F_uses(uses)
-    G.out.append("IMPLICIT NONE")
+    dump_F_uses(uses, abstract)
+    #G.out.append("IMPLICIT NONE")
     G.out.extend(decl_list)
     G.out.append("DEDENT")
     if 'return' not in func:
-        G.out.append("END SUBROUTINE %s" % name)
+        G.out.append("end subroutine %s" % name)
     else:
-        G.out.append("END FUNCTION %s" % name)
+        G.out.append("end function %s" % name)
 
 # -------------------------------
 def f08_param_need_skip(p, mapping):
@@ -916,7 +919,7 @@ def check_decl_uses(decl, uses):
     elif RE.match(r'procedure\((MPI_\w+)\)', decl, re.IGNORECASE):
         uses[RE.m.group(1)] = 1
 
-def dump_F_uses(uses):
+def dump_F_uses(uses, abstract=False):
     iso_c_binding_list = []
     mpi_f08_list_1 = []  # mpi_f08_types
     mpi_f08_list_2 = []  # mpi_f08_compile_constants
@@ -944,16 +947,17 @@ def dump_F_uses(uses):
             mpi_c_list_1.append(a)
         else:
             mpi_c_list_2.append(a)
+    use_stmt = 'import ::' if abstract else 'use :: mpi_f08, only :'
     if iso_c_binding_list:
-        dump_fortran_line("USE, intrinsic :: iso_c_binding, ONLY : %s" % ', '.join(iso_c_binding_list))
+        dump_fortran_line("use, intrinsic :: iso_c_binding, only : %s" % ', '.join(iso_c_binding_list))
     if mpi_f08_list_1:
-        dump_fortran_line("USE :: mpi_f08_types, ONLY : %s" % ', '.join(mpi_f08_list_1))
+        dump_fortran_line(f"{use_stmt} %s" % ', '.join(mpi_f08_list_1))
     if mpi_f08_list_2:
-        dump_fortran_line("USE :: mpi_f08_compile_constants, ONLY : %s" % ', '.join(mpi_f08_list_2))
+        dump_fortran_line(f"{use_stmt} %s" % ', '.join(mpi_f08_list_2))
     if mpi_f08_list_3:
-        dump_fortran_line("USE :: mpi_f08_link_constants, ONLY : %s" % ', '.join(mpi_f08_list_3))
+        dump_fortran_line(f"{use_stmt} %s" % ', '.join(mpi_f08_list_3))
     if mpi_f08_list_4:
-        dump_fortran_line("USE :: mpi_f08_callbacks, ONLY : %s" % ', '.join(mpi_f08_list_4))
+        dump_fortran_line(f"{use_stmt} %s" % ', '.join(mpi_f08_list_4))
     if mpi_c_list_1:
         dump_fortran_line("USE :: mpi_c_interface_types, ONLY : %s" % ', '.join(mpi_c_list_1))
     if mpi_c_list_2:
@@ -1027,7 +1031,7 @@ def dump_mpi_f08_types():
             elif t == 'c':
                 G.out.append("TYPE(c_Status), INTENT(%s) :: %s" % (intent, name))
             else:
-                G.out.append("TYPE(MPI_Status), INTENT(%s) :: %s" % (intent, name))
+                G.out.append("type(MPI_Status), INTENT(%s) :: %s" % (intent, name))
 
         # phrase of individual status field
         def field(t, name, idx):
@@ -1148,8 +1152,8 @@ def dump_mpi_f08_types():
                 # e.g. MPI_Comm_eq
                 G.out.append("")
                 G.out.append("elemental FUNCTION %s_%s(x, y) result(res)" % (a, op))
-                G.out.append("    TYPE(%s), INTENT(in) :: x, y" % a)
-                G.out.append("    LOGICAL :: res")
+                G.out.append("    type(%s), INTENT(in) :: x, y" % a)
+                G.out.append("    logical :: res")
                 if op == "eq":
                     G.out.append("    res = (x%MPI_VAL == y%MPI_VAL)")
                 else:
@@ -1370,13 +1374,13 @@ def get_F_procedure_type(p, is_large):
 def get_F_decl(p, mapping):
     if p['kind'] == 'STRING':
         if p['length']:
-            s = "CHARACTER(len=%s)" % p['length']
+            s = "character(len=%s)" % p['length']
         else:
-            s = "CHARACTER(len=*)"
+            s = "character(len=*)"
     elif RE.match(r'STRING_(2D)?ARRAY', p['kind']):
-        s = "CHARACTER(len=*)"
+        s = "character(len=*)"
     elif RE.match(r'(PROCEDURE)', mapping[p['kind']]):
-        s = "PROCEDURE(%s)" % get_F_procedure_type(p, re.match(r'BIG', mapping['_name']))
+        s = "procedure(%s)" % get_F_procedure_type(p, re.match(r'BIG', mapping['_name']))
     else:
         s = mapping[p['kind']]
 
@@ -1387,11 +1391,11 @@ def get_F_decl(p, mapping):
     elif RE.match(r'procedure', s, re.IGNORECASE):
         pass
     elif not RE.search(r'suppress=f08_intent', p['t']):
-        s += ", INTENT(%s)" % p['param_direction']
+        s += ", intent(%s)" % p['param_direction']
 
     # asynchronous
     if p['asynchronous']:
-        s += ", ASYNCHRONOUS"
+        s += ", asynchronous"
 
     # length
     length = get_F_decl_length(p)
@@ -1399,7 +1403,7 @@ def get_F_decl(p, mapping):
         # MPI_Comm_spawn_multiple
         length = "count, *"
     if need_ptr_check(p) or p['kind'] == "STATUS" or p['kind'] == "STRING_ARRAY":
-        s += ', TARGET'
+        s += ', target'
     s += ' :: ' + p['name']
     if length:
         s += '(%s)' % length
@@ -1421,8 +1425,8 @@ def get_F_decl_length(p):
 def get_F_c_interface_decl(func, p, f_mapping, c_mapping):
     t_c = c_mapping[p['kind']]
     t_f = f_mapping[p['kind']]
-    c_ptr = "TYPE(c_ptr), VALUE, INTENT(in) :: %s" % p['name']
-    intent = "INTENT(%s)" % p['param_direction']
+    c_ptr = "type(c_ptr), value, intent(in) :: %s" % p['name']
+    intent = "intent(%s)" % p['param_direction']
 
     def get_array():
         if t_c == 'int' and not RE.match(r'(array_of_errcodes|\w*weights)', p['name']):
@@ -1519,7 +1523,7 @@ def get_F_c_decl(func, p, f_mapping, c_mapping):
 
         if need_ptr_check(p):
             p['_array_convert'] = "c_ptr_check"
-            return "TYPE(c_ptr) :: %s_cptr" % p['name']
+            return "type(c_ptr) :: %s_cptr" % p['name']
         elif length == 'comm_size':
             if p['kind'] == "DATATYPE":
                 p['_array_convert'] = "allocate:MPI_VAL"
@@ -1553,7 +1557,7 @@ def get_F_c_decl(func, p, f_mapping, c_mapping):
         elif p['kind'] == "LOGICAL":
             p['_array_convert'] = "LOGICAL"
             return "INTEGER(c_int) :: %s_c(%s)" % (p['name'], length)
-        elif t_c == 'int' and t_f == 'INTEGER':
+        elif t_c == 'int' and t_f.upper() == 'INTEGER':
             p['_array_convert'] = "c_int"
             return "INTEGER(c_int) :: %s_c(%s)" % (p['name'], length)
         elif RE.match(r'MPI_(Fint|Aint|Count|Offset)', t_c):
@@ -1577,7 +1581,7 @@ def get_F_c_decl(func, p, f_mapping, c_mapping):
         return "INTEGER(c_int) :: %s_c" % p['name']
     elif RE.match(r'TYPE\(MPIX?_(\w+)\)', t_f, re.IGNORECASE):
         if RE.m.group(1) == 'Status':
-            return "TYPE(c_%s), TARGET :: %s_c" % (RE.m.group(1), p['name'])
+            return "type(c_%s), TARGET :: %s_c" % (RE.m.group(1), p['name'])
         else:
             return "INTEGER(c_%s) :: %s_c" % (RE.m.group(1), p['name'])
     elif RE.match(r'(BUFFER|EXTRA_STATE|ATTRIBUTE_VAL)', p['kind']):
@@ -1596,6 +1600,7 @@ def get_real_POLY_kinds():
     G.real_poly_kinds = {}
 
     def get_int_type(fortran_type):
+        fortran_type = fortran_type.upper()
         if fortran_type == "INTEGER":
             return "fint"
         elif "MPI_ADDRESS_KIND" in fortran_type:

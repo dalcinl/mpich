@@ -102,40 +102,66 @@ def main():
 
     # mpi_f08.f90 and pmpi_f08.f90
     G.out = []
-    dump_F_module_open("mpi_f08")
-    G.out.append("USE,intrinsic :: iso_c_binding, ONLY: c_ptr")
-    G.out.append("USE :: pmpi_f08")
-    G.out.append("USE :: mpi_f08_types")
-    G.out.append("USE :: mpi_f08_compile_constants")
-    G.out.append("USE :: mpi_f08_link_constants")
-    G.out.append("USE :: mpi_f08_callbacks")
-    G.out.append("")
-    G.out.append("IMPLICIT NONE")
-    for func in func_list:
-        G.out.append("")
+    #dump_F_module_open("mpi_f08")
+    #G.out.append("USE,intrinsic :: iso_c_binding, ONLY: c_ptr")
+    #G.out.append("USE :: pmpi_f08")
+    #G.out.append("USE :: mpi_f08_types")
+    #G.out.append("USE :: mpi_f08_compile_constants")
+    #G.out.append("USE :: mpi_f08_link_constants")
+    #G.out.append("USE :: mpi_f08_callbacks")
+    #G.out.append("")
+    #G.out.append("IMPLICIT NONE")
+    #for func in func_list:
+
+    for func in sorted(func_list, key=lambda x: get_function_name(x, False)):
         func_name = get_function_name(func, False)
-        G.out.append("INTERFACE %s" % func_name)
+        if func_name.startswith('MPIX_'): continue
+        G.out.append("")
+        G.out.append("")
+        G.out.append("interface %s" % func_name)
+        G.out.append("")
         G.out.append("INDENT")
+        dump_mpi_f08(func, False, abstract=True)
+        if func['_need_large'] and '_need_large_separate' not in func:
+            G.out.append("")
+            dump_mpi_f08(func, True, abstract=True)
+        G.out.append("DEDENT")
+        G.out.append("")
+        G.out.append("end interface %s" % func_name)
+
+        if '_need_large_separate' in func:
+            func_name = get_function_name(func, False) + "_c"
+            G.out.append("")
+            G.out.append("")
+            G.out.append("interface %s" % func_name)
+            G.out.append("INDENT")
+            dump_mpi_f08(func, True, abstract=True)
+            G.out.append("DEDENT")
+            G.out.append("end interface %s" % func_name)
+    G.out.append("")
+    #dump_F_module_close("mpi_f08")
+    f = "%s/mpi_fortran_functions_decl.F90" % f08_dir
+    dump_f90_file(f, G.out)
+
+    G.out = []
+    for func in sorted(func_list, key=lambda x: get_function_name(x, False)):
+        func_name = get_function_name(func, False)
+        if func_name.startswith('MPIX_'): continue
+        G.out.append("")
         dump_mpi_f08(func, False)
         if func['_need_large'] and '_need_large_separate' not in func:
             G.out.append("")
             dump_mpi_f08(func, True)
-        G.out.append("DEDENT")
-        G.out.append("END INTERFACE %s" % func_name)
 
         if '_need_large_separate' in func:
             G.out.append("")
             func_name = get_function_name(func, False) + "_c"
-            G.out.append("INTERFACE %s" % func_name)
-            G.out.append("INDENT")
             dump_mpi_f08(func, True)
-            G.out.append("DEDENT")
-            G.out.append("END INTERFACE %s" % func_name)
     G.out.append("")
-    dump_F_module_close("mpi_f08")
-
-    f = "%s/mpi_f08.f90" % f08_dir
+    f = "%s/mpi_fortran_functions_impl.F90" % f08_dir
     dump_f90_file(f, G.out)
+
+
 
     if do_profiling:
         temp_out = []
