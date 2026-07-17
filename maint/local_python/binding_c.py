@@ -130,7 +130,7 @@ def get_mansrc_file_path(func, root_dir):
         file_path = dir_path + '/' + func['file'] + ".adoc"
     elif RE.match(r'(MPI(X|_T)?_\w+)', func['name'], re.IGNORECASE):
         name = RE.m.group(1)
-        file_path = dir_path + '/' + name.lower() + ".adoc"
+        file_path = dir_path + '/' + name + ".adoc"
     else:
         raise Exception("Error in function name pattern: %s\n" % func['name'])
 
@@ -505,6 +505,8 @@ def check_func_directives(func):
         if RE.search(r'(NotThreadSafe)', func['docnotes']):
             func['_skip_global_cs'] = 1
 
+    if func['name'].startswith("MPIX_"):
+        func['_docnotes'].append('MPIX')
     if not '_skip_ThreadSafe' in func:
         func['_docnotes'].append('ThreadSafe')
     if not '_skip_Fortran' in func:
@@ -1374,8 +1376,7 @@ def dump_manpage(func, out):
 
     # Add the custom notes (specified in e.g. pt2pt_api.txt) as is.
     if 'notes' in func:
-        for l in func['notes']:
-            out.append(l)
+        out.extend(func['notes'])
         out.append("")
 
     if 'replace' in func:
@@ -1409,11 +1410,11 @@ def dump_manpage(func, out):
                         has['FortranStatus'] = 1
             for k in has:
                 out.append("include::../docnotes.adoc[tag=%s]" % k)
-        out.append("")
 
-    if 'notes2' in func:
-        for l in func['notes2']:
-            out.append(l)
+        # add custom notes from doc/mansrc/funcnotes.txt
+        if 'notes-' + note in func:
+            out.extend(func['notes-' + note])
+
         out.append("")
 
     if '_skip_err_codes' not in func:
@@ -1425,7 +1426,10 @@ def dump_manpage(func, out):
         out.append("")
     if 'seealso' in func:
         out.append("== See also")
-        out.append(re.sub(r'(MPI\w+)', r'*\1*(3)', func['seealso']))
+        outString = ""
+        adjList = re.compile(r'(MPI\w+)').findall(func['seealso'])
+        for adj in adjList: outString += "link:"+adj+".html[*"+adj+"*(3)] "
+        out.append(outString)
 
 def dump_manpage_list(list, header, out):
     count = len(list)
